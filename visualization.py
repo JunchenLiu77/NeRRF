@@ -1,3 +1,9 @@
+# import torch
+# from torchvision.transforms import ToTensor
+# from PIL import Image
+# from model_definition import YourModel
+##form chatgpt
+
 import sys
 import os
 
@@ -10,8 +16,16 @@ import numpy as np
 import util
 from render import NeRFRenderer
 from model import make_model
-from PIL import Image
 
+sys.path.append("dataloader")
+import math
+# from skimage.metrics import structural_similarity as compare_ssim
+# from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+# from lpips import LPIPS
+import torch.nn.functional as F
+from math import exp
+from dataset.dataloader import Dataset
+import imageio
 
 def extra_args(parser):
     parser.add_argument(
@@ -27,7 +41,7 @@ def extra_args(parser):
         default=[0, 1, 2, 3],
         help="Source view(s) in image, in increasing order. -1 to use random 1 view.",
     )
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size") #4
     parser.add_argument(
         "--seed",
         type=int,
@@ -91,6 +105,7 @@ args.resume = True
 
 device = util.get_cuda(args.gpu_id[0])
 net = make_model(conf["model"]).to(device=device)
+# net.load_weights(args)
 default_net_state_path = "%s/%s/%d/net" % (
     args.checkpoints_path,
     args.name,
@@ -100,15 +115,20 @@ model_path = "%s/%s/pixel_nerf_latest" % (
     args.checkpoints_path,
     args.name,
 )
-
-
 if hasattr(net, "load_weights") and os.path.exists(model_path):
     net.load_state_dict(torch.load(model_path, map_location=device))
 if os.path.exists(default_net_state_path):
     net.load_state_dict(torch.load(default_net_state_path, map_location=device))
 
-net = net.to(device)
+dset = Dataset(args.datadir, stage="test")
 
+print(args.datadir)
+
+
+
+data_loader = torch.utils.data.DataLoader(
+    dset, batch_size=16, shuffle=False, pin_memory=False #1
+)
 
 renderer = NeRFRenderer.from_conf(
     conf["renderer"],
@@ -125,45 +145,61 @@ renderer = NeRFRenderer.from_conf(
     use_progressive_encoder=args.use_progressive_encoder,
 ).to(device=device)
 
+
+
 render_par = renderer.bind_parallel(net, args.gpu_id, simple_output=True).eval()
 
-z_near = 0
-z_far = 80
+z_near = dset.z_near
+z_far = dset.z_far
+
+# load renderer paramters
+renderer_state_path = "%s/%s/_renderer" % (
+    args.checkpoints_path,
+    args.name,
+)
+if os.path.exists(renderer_state_path):
+    renderer.load_state_dict(
+        torch.load(renderer_state_path, map_location=device), False
+    )
+
+# load mesh rendered in stage 1
+if args.stage == 2 or args.stage == 3:
+    if not args.use_sdf:
+        renderer.init_tet(
+            # mesh_path="dataloader/learned_geo/" + args.name.split("_")[0] + ".obj"
+            mesh_path="data/learned_geo/" + args.name.split("_")[0] + ".obj"
+        )
+elif args.stage != 1:
+    raise NotImplementedError()
 
 torch.random.manual_seed(args.seed)
 
+source = torch.tensor(args.source, dtype=torch.long)
+NS = len(source)
+random_source = NS == 1 and source[0] == -1
+
+
 with torch.no_grad():
-    H, W = 512, 1024
-    pose = torch.zeros((3,), dtype=torch.float32).to(device=device)
-    center = pose.expand(H, W, -1)
-    # phi, theta = torch.meshgrid(
-    #     [
-    #         torch.linspace(-0 * np.pi, *np.pi, H),
-    #         torch.linspace(0 * np.pi, (2) * np.pi, W),
-    #     ]
-    # )
-    phi, theta = torch.meshgrid(
-        [torch.linspace(0.0, np.pi, H), torch.linspace(0 * np.pi, 2 * np.pi, W)]
-    )
-    viewdirs = torch.stack(
-        [
-            -torch.cos(theta) * torch.sin(phi),
-            torch.sin(theta) * torch.sin(phi),
-            torch.cos(phi),
-        ],
-        dim=-1,
-    ).to(device=device)
-    cam_nears = torch.tensor(0, device=device).view(1, 1, 1).expand(H, W, -1)
-    cam_fars = torch.tensor(80, device=device).view(1, 1, 1).expand(H, W, -1)
-    cam_rays = torch.cat((center, viewdirs, cam_nears, cam_fars), dim=-1)
+    for data in data_loader:
+        image = data["images"][0].to(device=device)  # (3, H, W)
+        pose = data["poses"][0].to(device=device)  # (4, 4)
+        focal = data["focal"][0].to(device=device)  # [2]
+        mask = data["mask"][0].to(device=device).cpu().float()  # todo
+        _, H, W = image.shape  # (3, H, W)
+        cam_rays = util.gen_rays(pose, W, H, focal, z_near, z_far)  # (H, W, 8)
+        rgbs_gt = image * 0.5 + 0.5  # (3, H, W)
 
-    rgbs, depth = render_par(
-        cam_rays.view(-1, cam_rays.shape[-1]).unsqueeze(0), want_weights=True
-    )
-    envmap = rgbs.reshape((H, W, 3))
-    envmap = envmap.cpu().numpy()
-    envmap = (envmap.clip(0, 1) * 255).astype("uint8")
-    image = Image.fromarray(envmap)
-    image.save("envmap1.png")
+        rgbs, depth = render_par(
+            cam_rays.view(-1, cam_rays.shape[-1]).unsqueeze(0), want_weights=True
+        )
+        rgbs = rgbs.permute(0, 2, 1).view(-1, 3, H, W).contiguous().cpu()
+        rgbs_gt = rgbs_gt.unsqueeze(0).cpu()
 
-    # pyexr.write("envmap.exr", envmap)
+
+
+        vis_u8 = (rgbs * 255).astype(np.uint8)
+        imageio.imwrite("test_eval.png", vis_u8)
+
+
+
+

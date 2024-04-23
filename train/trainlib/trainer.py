@@ -16,7 +16,7 @@ class Trainer:
         self.train_data_loader = torch.utils.data.DataLoader(
             train_dataset,
             # batch_size=args.batch_size,
-            batch_size=1,
+            batch_size=64, #1
             shuffle=True,
             # num_workers=1,    # lead to very slow training
             pin_memory=False,
@@ -24,7 +24,7 @@ class Trainer:
         self.test_data_loader = torch.utils.data.DataLoader(
             test_dataset,
             # batch_size=min(args.batch_size, 16),
-            batch_size=1,
+            batch_size=64,   #1
             shuffle=True,
             # num_workers=1,    # lead to very slow training
             pin_memory=False,

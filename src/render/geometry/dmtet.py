@@ -112,6 +112,11 @@ class DMTet:
     def __call__(self, pos_nx3, sdf_n, tet_fx4):
         with torch.no_grad():
             occ_n = sdf_n > 0
+            average_occ = occ_n.sum()/sdf_n.size()[0]
+            # if (average_occ==0):
+            #     max_values, max_indices = torch.topk(sdf_n.data, k=100)
+            #     sdf_n.data[max_indices] = 0.1
+            #     occ_n = sdf_n > 0
             occ_fx4 = occ_n[tet_fx4.reshape(-1)].reshape(-1, 4)
             occ_sum = torch.sum(occ_fx4, -1)
             valid_tets = (occ_sum > 0) & (occ_sum < 4)

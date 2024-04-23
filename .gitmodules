@@ -1,0 +1,11 @@
+[submodule "nvdiffrast"]
+    path = nvdiffrast
+    ignore = dirty
+
+[submodule "python-mesh-raycast"]
+    path = python-mesh-raycast
+    ignore = dirty
+
+[submodule "tiny-cuda-nn"]
+    path = tiny-cuda-nn
+    ignore = dirty

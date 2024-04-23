@@ -14,13 +14,20 @@ from render import NeRFRenderer
 import util
 import numpy as np
 import torch
+import torch.nn.functional as F
 from dotmap import DotMap
 from dataset.dataloader import Dataset
+import cv2
 
+import random
+np.random.seed(0)
+random.seed(0)
+torch.manual_seed(0)
+torch.backends.cudnn.benchmark = False
 
 def extra_args(parser):
     parser.add_argument(
-        "--batch_size", "-B", type=int, default=4, help="Object batch size ('SB')"
+        "--batch_size", "-B", type=int, default=16, help="Object batch size ('SB')"
     )
     parser.add_argument(
         "--freeze_enc",
@@ -92,7 +99,7 @@ def extra_args(parser):
 
 
 # parse args
-args, conf = util.args.parse_args(extra_args, training=True, default_ray_batch_size=128)
+args, conf = util.args.parse_args(extra_args, training=True, default_ray_batch_size=256)
 device = util.get_cuda(args.gpu_id[0])
 
 if args.stage != 1 and args.stage != 2:
@@ -153,7 +160,7 @@ class RRFTrainer(trainlib.Trainer):
                             for n, p in renderer.named_parameters()
                             if ("sdf" in n) or ("deform" in n) and p.requires_grad
                         ],
-                        "lr": 0.001,
+                        "lr": 1.e-4, #0.001 1.e-4
                     },
                 ],
             )
@@ -170,10 +177,10 @@ class RRFTrainer(trainlib.Trainer):
             raise NotImplementedError()
 
         # load renderer paramters
-        if os.path.exists(self.renderer_state_path):
-            renderer.load_state_dict(
-                torch.load(self.renderer_state_path, map_location=device), False
-            )
+        # if os.path.exists(self.renderer_state_path):
+        #     renderer.load_state_dict(
+        #         torch.load(self.renderer_state_path, map_location=device), False
+        #     )
 
         # load mesh rendered in stage 1
         if args.stage == 2:
@@ -238,11 +245,35 @@ class RRFTrainer(trainlib.Trainer):
             mask_, ek_loss = renderer.render_mask(
                 samp_rays, mvp, h=H, w=W, global_step=global_step
             )
-            mask_loss = torch.nn.functional.mse_loss(mask, mask_)
+            # p = 0.8
+            # mask1 = mask * p + (torch.ones_like(mask) - mask) * (1 - p)
+            # mask2 = mask_ * p + (torch.ones_like(mask_) - mask_) * (1 - p)
+            mask1 = mask * 3
+            mask2 = mask_
+            
+            mask_loss = torch.nn.functional.mse_loss(mask1, mask2) #  + 0.01 / torch.sum(mask_)
 
             loss_dict["mask"] = mask_loss.item()
             loss_dict["eikonal"] = ek_loss
             loss = mask_loss + ek_loss
+            if global_step == 0: 
+                monitor = "monitor"
+                if os.path.exists(monitor):
+                    for file_name in os.listdir(monitor):
+                        file_path = os.path.join(monitor, file_name)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                    os.rmdir(monitor)
+                os.mkdir(monitor)
+
+            if global_step % 100 == 0: 
+                
+                mask_file_name = f"monitor/mask@step{global_step}.png"
+                fixed_rgbs = mask2.squeeze(0).cpu().detach().numpy()
+                cv2.imwrite(mask_file_name, fixed_rgbs * 255)
+                maskgt_file_name = f"monitor/mask@step{global_step}GT.png"
+                fixed_rgbs = mask1.squeeze(0).cpu().detach().numpy()
+                cv2.imwrite(maskgt_file_name, fixed_rgbs * 255) 
             if is_train:
                 loss.backward()
             loss_dict["t"] = loss.item()

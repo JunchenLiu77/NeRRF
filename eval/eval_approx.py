@@ -108,7 +108,7 @@ def extra_args(parser):
         default=[0, 1, 2, 3],
         help="Source view(s) in image, in increasing order. -1 to use random 1 view.",
     )
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size") #4
     parser.add_argument(
         "--seed",
         type=int,
@@ -192,7 +192,7 @@ dset = Dataset(args.datadir, stage="test")
 print(args.datadir)
 
 data_loader = torch.utils.data.DataLoader(
-    dset, batch_size=1, shuffle=False, pin_memory=False
+    dset, batch_size=16, shuffle=False, pin_memory=False #1
 )
 
 renderer = NeRFRenderer.from_conf(
@@ -241,7 +241,8 @@ if os.path.exists(renderer_state_path):
 if args.stage == 2 or args.stage == 3:
     if not args.use_sdf:
         renderer.init_tet(
-            mesh_path="dataloader/learned_geo/" + args.name.split("_")[0] + ".obj"
+            # mesh_path="dataloader/learned_geo/" + args.name.split("_")[0] + ".obj"
+            mesh_path="data/learned_geo/" + args.name.split("_")[0] + ".obj"
         )
 elif args.stage != 1:
     raise NotImplementedError()
@@ -273,62 +274,69 @@ with torch.no_grad():
         rgbs = rgbs.permute(0, 2, 1).view(-1, 3, H, W).contiguous().cpu()
         rgbs_gt = rgbs_gt.unsqueeze(0).cpu()
 
-        apply_mask = False
+        apply_mask = True
         if apply_mask:
             import cv2
 
             cv2.imwrite("mask.png", mask.squeeze(0).unsqueeze(-1).cpu().numpy() * 255)
-            cv2.imwrite(
-                "rgbs.png",
-                (rgbs.squeeze(0) * mask).permute(1, 2, 0).cpu().numpy() * 255,
-            )
-            cv2.imwrite(
-                "rgbs_gt.png",
-                (rgbs_gt.squeeze(0) * mask).permute(1, 2, 0).cpu().numpy() * 255,
-            )
 
-            psnr = calculate_psnr(
-                rgbs_gt.squeeze(0).permute(1, 2, 0).cpu().numpy(),
-                rgbs.squeeze(0).permute(1, 2, 0).cpu().numpy(),
-                mask.permute(1, 2, 0).cpu().numpy(),
+            rgb_file_name = f"rgbs_{cnt}.png"
+            cv2.imwrite(
+                rgb_file_name,
+                rgbs.squeeze(0).permute(1, 2, 0).cpu().numpy() * 255,
             )
-            ssim = calculate_ssim(
-                rgbs_gt.squeeze(0).permute(1, 2, 0).cpu().numpy(),
-                rgbs.squeeze(0).permute(1, 2, 0).cpu().numpy(),
-                mask.permute(1, 2, 0).cpu().numpy(),
-            )
-            lpips = 0
-        else:
-            lpips = compare_lpips(rgbs, rgbs_gt).sum().item()
-            ssim = compare_ssim(
-                rgbs.numpy().squeeze(0),
-                rgbs_gt.numpy().squeeze(0),
-                multichannel=True,
-                data_range=1,
-                channel_axis=0,
-            )
-            rgbs = rgbs.view(-1, 3).numpy()
-            rgbs_gt = rgbs_gt.view(-1, 3).numpy()
-            psnr = compare_psnr(rgbs, rgbs_gt, data_range=1)
+            # cv2.imwrite(
+            #     "rgbs.png",
+            #     (rgbs.squeeze(0) * mask).permute(1, 2, 0).cpu().numpy() * 255,
+            # )
+            # cv2.imwrite(
+            #     "rgbs_gt.png",
+            #     (rgbs_gt.squeeze(0) * mask).permute(1, 2, 0).cpu().numpy() * 255,
+            # )
 
-        total_ssim += ssim
-        total_psnr += psnr
-        total_lpips += lpips
+        #     psnr = calculate_psnr(
+        #         rgbs_gt.squeeze(0).permute(1, 2, 0).cpu().numpy(),
+        #         rgbs.squeeze(0).permute(1, 2, 0).cpu().numpy(),
+        #         mask.permute(1, 2, 0).cpu().numpy(),
+        #     )
+        #     ssim = calculate_ssim(
+        #         rgbs_gt.squeeze(0).permute(1, 2, 0).cpu().numpy(),
+        #         rgbs.squeeze(0).permute(1, 2, 0).cpu().numpy(),
+        #         mask.permute(1, 2, 0).cpu().numpy(),
+        #     )
+        #     lpips = 0
+        # else:
+        #     lpips = compare_lpips(rgbs, rgbs_gt).sum().item()
+        #     ssim = compare_ssim(
+        #         rgbs.numpy().squeeze(0),
+        #         rgbs_gt.numpy().squeeze(0),
+        #         win_size = 3,
+        #         multichannel=True,
+        #         data_range=1,
+        #         channel_axis=0,
+        #     )
+        #     rgbs = rgbs.view(-1, 3).numpy()
+        #     rgbs_gt = rgbs_gt.view(-1, 3).numpy()
+        #     psnr = compare_psnr(rgbs, rgbs_gt, data_range=1)
+
+        # total_ssim += ssim
+        # total_psnr += psnr
+        # total_lpips += lpips
 
         # import imageio
 
-        # vis_u8 = (rgbs * 255).astype(np.uint8)
+        # vis_u8 = (rgbs * 255).numpy().astype(np.uint8)
         # imageio.imwrite("test_eval.png", vis_u8)
 
         cnt += 1
-        print(
-            "curr psnr",
-            total_psnr / cnt,
-            "ssim",
-            total_ssim / cnt,
-            "lpips",
-            total_lpips / cnt,
-        )
-print(
-    "final psnr", total_psnr / cnt, "ssim", total_ssim / cnt, "lpips", total_lpips / cnt
-)
+#         print(
+#             "curr psnr",
+#             total_psnr / cnt,
+#             "ssim",
+#             total_ssim / cnt,
+#             "lpips",
+#             total_lpips / cnt,
+#         )
+# print(
+#     "final psnr", total_psnr / cnt, "ssim", total_ssim / cnt, "lpips", total_lpips / cnt
+# )

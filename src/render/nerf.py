@@ -154,6 +154,15 @@ class NeRFRenderer(torch.nn.Module):
         )  # covers [-1, 1]
         self.indices = torch.tensor(tets["indices"], dtype=torch.long, device="cuda")
         self.dmtet = DMTet("cuda")
+        # file_path = "128tetsmesh.obj"
+        # with open(file_path, 'w') as f:
+        #     # 写入顶点信息
+        #     for v in self.verts:
+        #         f.write(f"v {v[0]} {v[1]} {v[2]}\n")
+            
+        #     # 写入面信息
+        #     for face in self.indices:
+        #         f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1} {face[3]+1}\n")
 
         if self.use_grid:
             # use grid to represent sdf and deformation, not suggested
@@ -192,7 +201,7 @@ class NeRFRenderer(torch.nn.Module):
                 print(f"[INFO] init sdf from base mesh")
                 mesh = trimesh.load("data/init/sphere.obj", force="mesh")
                 scale = (
-                    1.0 / np.array(mesh.bounds[1] - mesh.bounds[0]).max()
+                    2.0 / np.array(mesh.bounds[1] - mesh.bounds[0]).max()
                 )  # if use eikonal dataset, change 1.0 to 0.2
                 center = np.array(mesh.bounds[1] + mesh.bounds[0]) / 2
                 mesh.vertices = (mesh.vertices - center) * scale
@@ -209,7 +218,7 @@ class NeRFRenderer(torch.nn.Module):
                 loss_fn = torch.nn.MSELoss()
                 optimizer = torch.optim.Adam(list(self.parameters()), lr=1e-3)
 
-                pretrain_iters = 10000
+                pretrain_iters = 10000*5
                 batch_size = 10240
                 print(f"[INFO] start SDF pre-training ")
                 for i in tqdm.tqdm(range(pretrain_iters)):
@@ -221,7 +230,7 @@ class NeRFRenderer(torch.nn.Module):
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    if i % 100 == 0:
+                    if i % 1000 == 0:
                         print(f"[INFO] SDF pre-train: {loss.item()}")
 
                 print(f"[INFO] SDF pre-train final loss: {loss.item()}")

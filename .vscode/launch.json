@@ -1,0 +1,47 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Train_cow",
+            "type": "python",
+            "request": "launch",
+            "program": "train/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "-n", "cow_transparent",
+                "-c", "NeRRF.conf",
+                "-D", "data/blender/transparent/cow",
+                "--gpu_id=0", 
+                "--visual_path", "tet_visual",
+                "--stage", "1",
+                "--tet_scale", "4.2",
+                "--sphere_radius", "2.30",
+                "--ior", "1.2",
+                "--enable_refr"
+            ],
+            "python":"/opt/conda/envs/nerrf/bin/python"
+        },
+        {
+            "name": "Train_grasp_catglass",
+            "type": "python",
+            "request": "launch",
+            "program": "train/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false, 
+            "args": [
+                "-n", "grasp_catglass_transparent",
+                "-c", "NeRRF.conf",
+                "-D", "data/blender/transparent/grasp_catglass",
+                "--gpu_id=0", 
+                "--visual_path", "tet_visual",
+                "--stage", "1",
+                "--tet_scale", "4.2",
+                "--sphere_radius", "2.30",
+                "--ior", "1.2",
+                "--enable_refr"
+            ],
+            "python":"/opt/conda/envs/nerrf/bin/python"
+        },
+    ]
+}
