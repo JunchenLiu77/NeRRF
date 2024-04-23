@@ -78,9 +78,9 @@ class Dataset(torch.utils.data.Dataset):
             self.mask_dir = data_dir + "/../../mask/" + os.path.basename(data_dir)
             self.meta_dir = data_dir + "/../../meta"
             if self.split == "train":
-                self.image_list = [str(2 * d) for d in range(49,50)] #50
+                self.image_list = [str(2 * d) for d in range(50)] #50
             else:
-                self.image_list = [str(2 * d + 1) for d in range(1)] #39
+                self.image_list = [str(2 * d + 1) for d in range(39)] #39
         elif self.type == "eikonal":
             self.image_size = (672, 504)
             self.z_near, self.z_far = 0.02, 3
