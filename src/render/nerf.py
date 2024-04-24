@@ -104,6 +104,7 @@ class NeRFRenderer(torch.nn.Module):
         sphere_tracing_iters=50,
         n_steps=100,
         n_secant_steps=8,
+        args=None, 
     ):
         super().__init__()
         self.sdf_threshold = sdf_threshold
@@ -164,6 +165,11 @@ class NeRFRenderer(torch.nn.Module):
         #     for face in self.indices:
         #         f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1} {face[3]+1}\n")
 
+        if args is not None:
+            self.renderer_state_path = f"{args.checkpoints_path}/{args.name}/_renderer_init"
+        else:
+            self.renderer_state_path = ''
+
         if self.use_grid:
             # use grid to represent sdf and deformation, not suggested
             if stage == 1:
@@ -194,47 +200,56 @@ class NeRFRenderer(torch.nn.Module):
             # use mlp to represent sdf and deform
             self.encoder, self.in_dim = get_encoder("frequency_torch", input_dim=3)
             self.sdf_and_deform_mlp = MLP(self.in_dim, 4, 32, 3, False)  # 4, 32, 3
-            self.encoder.to("cuda")
-            self.sdf_and_deform_mlp.to("cuda")
+            
             if stage == 1:
                 # init sdf with base mesh
                 print(f"[INFO] init sdf from base mesh")
-                mesh = trimesh.load("data/init/sphere.obj", force="mesh")
-                scale = (
-                    2.0 / np.array(mesh.bounds[1] - mesh.bounds[0]).max()
-                )  # if use eikonal dataset, change 1.0 to 0.2
-                center = np.array(mesh.bounds[1] + mesh.bounds[0]) / 2
-                mesh.vertices = (mesh.vertices - center) * scale
+                # load renderer paramters
+                if os.path.exists(self.renderer_state_path):
+                    self.load_state_dict(
+                        torch.load(self.renderer_state_path, map_location='cpu'), False
+                    )
+                else:
+                    self.encoder.to("cuda")
+                    self.sdf_and_deform_mlp.to("cuda")
+                    mesh = trimesh.load("data/init/sphere.obj", force="mesh")
+                    scale = (
+                        2.0 / np.array(mesh.bounds[1] - mesh.bounds[0]).max()
+                    )  # if use eikonal dataset, change 1.0 to 0.2
+                    center = np.array(mesh.bounds[1] + mesh.bounds[0]) / 2
+                    mesh.vertices = (mesh.vertices - center) * scale
 
-                BVH = cubvh.cuBVH(
-                    mesh.vertices, mesh.faces
-                )  # build with numpy.ndarray/torch.Tensor
-                sdf, face_id, _ = BVH.signed_distance(
-                    self.verts, return_uvw=False, mode="watertight"
-                )
-                sdf *= -1  # INNER is POSITIVE
+                    BVH = cubvh.cuBVH(
+                        mesh.vertices, mesh.faces
+                    )  # build with numpy.ndarray/torch.Tensor
+                    sdf, face_id, _ = BVH.signed_distance(
+                        self.verts, return_uvw=False, mode="watertight"
+                    )
+                    sdf *= -1  # INNER is POSITIVE
 
-                # pretraining
-                loss_fn = torch.nn.MSELoss()
-                optimizer = torch.optim.Adam(list(self.parameters()), lr=1e-3)
+                    # pretraining
+                    loss_fn = torch.nn.MSELoss()
+                    optimizer = torch.optim.Adam(list(self.parameters()), lr=1e-3)
 
-                pretrain_iters = 10000*5
-                batch_size = 10240
-                print(f"[INFO] start SDF pre-training ")
-                for i in tqdm.tqdm(range(pretrain_iters)):
-                    rand_idx = torch.randint(0, self.verts.shape[0], (batch_size,))
-                    p = self.verts[rand_idx]
-                    ref_value = sdf[rand_idx]
-                    output = self.sdf_and_deform_mlp(self.encoder(p))
-                    loss = loss_fn(output[..., 0], ref_value)
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    if i % 1000 == 0:
-                        print(f"[INFO] SDF pre-train: {loss.item()}")
+                    pretrain_iters = 10000*5
+                    batch_size = 10240
+                    print(f"[INFO] start SDF pre-training ")
+                    for i in tqdm.tqdm(range(pretrain_iters)):
+                        rand_idx = torch.randint(0, self.verts.shape[0], (batch_size,))
+                        p = self.verts[rand_idx]
+                        ref_value = sdf[rand_idx]
+                        output = self.sdf_and_deform_mlp(self.encoder(p))
+                        loss = loss_fn(output[..., 0], ref_value)
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        if i % 1000 == 0:
+                            print(f"[INFO] SDF pre-train: {loss.item()}")
 
-                print(f"[INFO] SDF pre-train final loss: {loss.item()}")
-                del mesh, BVH
+                    # Save
+                    torch.save(self.state_dict(), self.renderer_state_path)
+                    print(f"[INFO] SDF pre-train final loss: {loss.item()}")
+                    del mesh, BVH
 
         edges_idx = torch.tensor(
             [0, 1, 0, 2, 0, 3, 1, 2, 1, 3, 2, 3], dtype=torch.long, device="cuda"
@@ -1544,6 +1559,7 @@ class NeRFRenderer(torch.nn.Module):
         use_grid=False,
         use_sdf=False,
         use_progressive_encoder=False,
+        args=None,
     ):
         return cls(
             conf.get_int("n_coarse", 128),
@@ -1564,6 +1580,7 @@ class NeRFRenderer(torch.nn.Module):
             use_grid=use_grid,
             use_sdf=use_sdf,
             use_progressive_encoder=use_progressive_encoder,
+            args=args,
         )
 
     def bind_parallel(self, net, gpus=None, simple_output=False):
