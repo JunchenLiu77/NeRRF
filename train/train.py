@@ -125,6 +125,7 @@ renderer = NeRFRenderer.from_conf(
     use_grid=args.use_grid,
     use_sdf=args.use_sdf,
     use_progressive_encoder=args.use_progressive_encoder,
+    args=args,
 ).to(device=device)
 
 # parallize
@@ -160,7 +161,7 @@ class RRFTrainer(trainlib.Trainer):
                             for n, p in renderer.named_parameters()
                             if ("sdf" in n) or ("deform" in n) and p.requires_grad
                         ],
-                        "lr": 1.e-4, #0.001 1.e-4
+                        "lr": 1.e-3, #0.001 1.e-4
                     },
                 ],
             )
@@ -248,14 +249,19 @@ class RRFTrainer(trainlib.Trainer):
             # p = 0.8
             # mask1 = mask * p + (torch.ones_like(mask) - mask) * (1 - p)
             # mask2 = mask_ * p + (torch.ones_like(mask_) - mask_) * (1 - p)
-            mask1 = mask * 3
-            mask2 = mask_
+
+            mask_gt = mask
+            mask_pred = mask_
+            mask_loss_mse = MSE_loss(mask_gt, mask_pred)
             
-            mask_loss = torch.nn.functional.mse_loss(mask1, mask2) #  + 0.01 / torch.sum(mask_)
+            mask_loss, iou = IoU_loss(mask_gt, mask_pred)
 
             loss_dict["mask"] = mask_loss.item()
             loss_dict["eikonal"] = ek_loss
+            
+            # loss = mask_loss_mse + ek_loss
             loss = mask_loss + ek_loss
+
             if global_step == 0: 
                 monitor = "monitor"
                 if os.path.exists(monitor):
@@ -267,12 +273,14 @@ class RRFTrainer(trainlib.Trainer):
                 os.mkdir(monitor)
 
             if global_step % 100 == 0: 
-                
+                print(f"{global_step}, IoU: {iou}, IoU_Loss: {mask_loss}, MSE Loss: {mask_loss_mse}")
+                print(f"num 0={torch.where(mask_pred == 0)[0].numel()}, num 1={torch.where(mask_pred == 1)[0].numel()}, num other={torch.where((mask_pred != 0) & (mask_pred != 1))[0].numel()}")
+                print(f"num <0={torch.where(mask_pred < 0)[0].numel()}, num >0={torch.where(mask_pred > 0)[0].numel()}")
                 mask_file_name = f"monitor/mask@step{global_step}.png"
-                fixed_rgbs = mask2.squeeze(0).cpu().detach().numpy()
+                fixed_rgbs = mask_pred.squeeze(0).cpu().detach().numpy()
                 cv2.imwrite(mask_file_name, fixed_rgbs * 255)
                 maskgt_file_name = f"monitor/mask@step{global_step}GT.png"
-                fixed_rgbs = mask1.squeeze(0).cpu().detach().numpy()
+                fixed_rgbs = mask_gt.squeeze(0).cpu().detach().numpy()
                 cv2.imwrite(maskgt_file_name, fixed_rgbs * 255) 
             if is_train:
                 loss.backward()
@@ -396,6 +404,56 @@ class RRFTrainer(trainlib.Trainer):
 
     def test_step(self, data, global_step, idx=None):
         return self.eval_step(data, global_step)
+
+
+def MSE_loss(gt, pred):
+    """
+    Args:
+        gt (Tensor): shape (1, H, W)
+        pred (Tensor): shape (1, H, W)
+    """
+    alpha = 2
+    TP = (gt.bool() & pred.bool())
+    FP = ((~gt.bool()) & pred.bool())
+    FN = (gt.bool() & (~pred.bool()))
+
+    TP_ = TP * (pred - gt * alpha) ** 2
+    FP_ = FP * (pred - gt * alpha) ** 2
+    FN_ = FN * (pred - gt * alpha) ** 2
+    union = (FP_ + FN_ + TP_).sum()
+
+    # loss = union / gt.numel()
+    loss = 1 - gt.sum() / union
+    
+    # loss = torch.nn.functional.mse_loss(gt * alpha, pred)
+
+    return loss
+
+
+def IoU_loss(gt, pred):
+    """
+    Args:
+        gt (Tensor): shape (1, H, W)
+        pred (Tensor): shape (1, H, W)
+    """
+    TP = (gt.bool() & pred.bool())
+    FP = ((~gt.bool()) & pred.bool())
+    FN = (gt.bool() & (~pred.bool()))
+
+    TP_ = TP * pred # 
+    FP_ = FP * pred # 
+    FN_ = FN * gt
+    # alpha = 2
+    # TP_ = TP * (pred - alpha) ** 2
+    # FP_ = FP * pred ** 2
+    # FN_ = FN * alpha ** 2
+    
+    union = (TP_ + FP_ + FN_).sum()
+    
+    iou = TP_.sum() / union
+    iou_loss = 1 - TP_.sum() / union
+
+    return iou_loss, iou
 
 
 trainer = RRFTrainer()
