@@ -161,7 +161,7 @@ class RRFTrainer(trainlib.Trainer):
                             for n, p in renderer.named_parameters()
                             if ("sdf" in n) or ("deform" in n) and p.requires_grad
                         ],
-                        "lr": 1.e-3, #0.001 1.e-4
+                        "lr": 1.e-2, #0.001 1.e-4
                     },
                 ],
             )
@@ -259,8 +259,8 @@ class RRFTrainer(trainlib.Trainer):
             loss_dict["mask"] = mask_loss.item()
             loss_dict["eikonal"] = ek_loss
             
-            # loss = mask_loss_mse + ek_loss
-            loss = mask_loss + ek_loss
+            loss = mask_loss_mse + ek_loss
+            # loss = mask_loss + ek_loss
 
             if global_step == 0: 
                 monitor = "monitor"
@@ -272,7 +272,7 @@ class RRFTrainer(trainlib.Trainer):
                     os.rmdir(monitor)
                 os.mkdir(monitor)
 
-            if global_step % 100 == 0: 
+            if global_step % 10 == 0: 
                 print(f"{global_step}, IoU: {iou}, IoU_Loss: {mask_loss}, MSE Loss: {mask_loss_mse}")
                 print(f"num 0={torch.where(mask_pred == 0)[0].numel()}, num 1={torch.where(mask_pred == 1)[0].numel()}, num other={torch.where((mask_pred != 0) & (mask_pred != 1))[0].numel()}")
                 print(f"num <0={torch.where(mask_pred < 0)[0].numel()}, num >0={torch.where(mask_pred > 0)[0].numel()}")
@@ -412,18 +412,30 @@ def MSE_loss(gt, pred):
         gt (Tensor): shape (1, H, W)
         pred (Tensor): shape (1, H, W)
     """
-    alpha = 2
+    alpha = 1
     TP = (gt.bool() & pred.bool())
     FP = ((~gt.bool()) & pred.bool())
     FN = (gt.bool() & (~pred.bool()))
+    TN = (~gt.bool() & (~pred.bool()))
 
     TP_ = TP * (pred - gt * alpha) ** 2
     FP_ = FP * (pred - gt * alpha) ** 2
     FN_ = FN * (pred - gt * alpha) ** 2
-    union = (FP_ + FN_ + TP_).sum()
+    TN_ = TN * (pred - gt * alpha) ** 2
+    
+    N = gt.numel()
+    N_gt = gt.sum()
+    N_TP = TP.sum().detach()
+    N_FP = FP.sum().detach()
+    N_FN = FN.sum().detach()
+    N_TN = TN.sum().detach()
+    a1 = 1 - N_TN / N #  / N_gt
+    a2 = N_TN / N #  / N
 
-    # loss = union / gt.numel()
-    loss = 1 - gt.sum() / union
+    union = (a2 * TP_ + a1 * FP_).sum()
+
+    loss = union # / N
+    # loss = 1 - gt.sum() / union
     
     # loss = torch.nn.functional.mse_loss(gt * alpha, pred)
 
