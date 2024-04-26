@@ -88,6 +88,10 @@ def shade(
         )
 
     # Separate kd into alpha and color, default alpha = 1
+    # import torch
+    # from PIL import Image
+    # image = Image.fromarray((kd[0] * 255).byte().cpu().numpy(), 'RGB')
+    # image.save('kd.png')
     alpha = kd[..., 3:4] if kd.shape[-1] == 4 else torch.ones_like(kd[..., 0:1])
     kd = kd[..., 0:3]
 
@@ -158,7 +162,7 @@ def render_layer(rast, rast_deriv, mesh, view_pos, lgt, resolution, spp, msaa, b
     ################################################################################
 
     # Scale down to shading resolution when MSAA is enabled, otherwise shade at full resolution
-    if spp > 1 and msaa:
+    if spp > 1 and msaa: # spp == 1, disabled
         rast_out_s = util.scale_img_nhwc(rast, resolution, mag="nearest", min="nearest")
         rast_out_deriv_s = (
             util.scale_img_nhwc(rast_deriv, resolution, mag="nearest", min="nearest")
@@ -276,6 +280,9 @@ def render_mesh(
                 ),
                 alpha,
             )
+            # force the antialias to be false
+            # antialias = False
+            #
             if antialias:
                 accum = dr.antialias(
                     accum.contiguous(), rast, v_pos_clip, mesh.t_pos_idx.int()
