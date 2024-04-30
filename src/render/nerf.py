@@ -214,7 +214,7 @@ class NeRFRenderer(torch.nn.Module):
                     self.sdf_and_deform_mlp.to("cuda")
                     mesh = trimesh.load("data/init/sphere.obj", force="mesh")
                     scale = (
-                        2.0 / np.array(mesh.bounds[1] - mesh.bounds[0]).max()
+                        1 / np.array(mesh.bounds[1] - mesh.bounds[0]).max()
                     )  # if use eikonal dataset, change 1.0 to 0.2
                     center = np.array(mesh.bounds[1] + mesh.bounds[0]) / 2
                     mesh.vertices = (mesh.vertices - center) * scale

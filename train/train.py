@@ -272,7 +272,7 @@ class RRFTrainer(trainlib.Trainer):
                     os.rmdir(monitor)
                 os.mkdir(monitor)
 
-            if global_step % 10 == 0: 
+            if global_step % 200 == 0: 
                 print(f"{global_step}, IoU: {iou}, IoU_Loss: {mask_loss}, MSE Loss: {mask_loss_mse}")
                 print(f"num 0={torch.where(mask_pred == 0)[0].numel()}, num 1={torch.where(mask_pred == 1)[0].numel()}, num other={torch.where((mask_pred != 0) & (mask_pred != 1))[0].numel()}")
                 print(f"num <0={torch.where(mask_pred < 0)[0].numel()}, num >0={torch.where(mask_pred > 0)[0].numel()}")
