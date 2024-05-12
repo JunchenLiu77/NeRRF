@@ -1,6 +1,8 @@
 import sys
 import os
-
+# os.environ['PYOPENGL_PLATFORM'] = 'egl'
+# os.environ['MESA_GL_VERSION_OVERRIDE'] = '3.3'
+# os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -18,6 +20,9 @@ import torch.nn.functional as F
 from dotmap import DotMap
 from dataset.dataloader import Dataset
 import cv2
+import pyrender
+import trimesh
+
 
 import random
 np.random.seed(0)
@@ -272,16 +277,32 @@ class RRFTrainer(trainlib.Trainer):
                     os.rmdir(monitor)
                 os.mkdir(monitor)
 
-            if global_step % 200 == 0: 
+            if global_step % 200 == 100: 
                 print(f"{global_step}, IoU: {iou}, IoU_Loss: {mask_loss}, MSE Loss: {mask_loss_mse}")
-                print(f"num 0={torch.where(mask_pred == 0)[0].numel()}, num 1={torch.where(mask_pred == 1)[0].numel()}, num other={torch.where((mask_pred != 0) & (mask_pred != 1))[0].numel()}")
-                print(f"num <0={torch.where(mask_pred < 0)[0].numel()}, num >0={torch.where(mask_pred > 0)[0].numel()}")
+                # print(f"num 0={torch.where(mask_pred == 0)[0].numel()}, num 1={torch.where(mask_pred == 1)[0].numel()}, num other={torch.where((mask_pred != 0) & (mask_pred != 1))[0].numel()}")
+                # print(f"num <0={torch.where(mask_pred < 0)[0].numel()}, num >0={torch.where(mask_pred > 0)[0].numel()}")
                 mask_file_name = f"monitor/mask@step{global_step}.png"
                 fixed_rgbs = mask_pred.squeeze(0).cpu().detach().numpy()
                 cv2.imwrite(mask_file_name, fixed_rgbs * 255)
                 maskgt_file_name = f"monitor/mask@step{global_step}GT.png"
                 fixed_rgbs = mask_gt.squeeze(0).cpu().detach().numpy()
-                cv2.imwrite(maskgt_file_name, fixed_rgbs * 255) 
+                cv2.imwrite(maskgt_file_name, fixed_rgbs * 255)
+            if 0:
+                # https://pyrender.readthedocs.io/en/latest/examples/quickstart.html#minimal-example-for-offscreen-rendering
+                # If you’re using a headless server, make sure that you followed the guide for installing OSMesa. See Getting Pyrender Working with OSMesa.
+                scene = pyrender.Scene()
+                fuze_trimesh = trimesh.load('data/learned_geo/grasp_catglass_transparent3500.obj')
+                # fuze_trimesh = trimesh.load('data/init/sphere.obj')
+                mesh = pyrender.Mesh.from_trimesh(fuze_trimesh)
+                scene.add(mesh)
+                pyrender_camera = pyrender.IntrinsicsCamera(focal[0], focal[1], 240, 135, zfar=800.0)
+                scene.add(pyrender_camera, pose=pose.cpu())
+                light = pyrender.SpotLight(color=np.ones(3), intensity=3.0,innerConeAngle=np.pi/16.0,outerConeAngle=np.pi/6.0)
+                scene.add(light, pose=pose.cpu())
+                r = pyrender.OffscreenRenderer(400, 400)
+                color, depth = r.render(scene)
+
+
             if is_train:
                 loss.backward()
             loss_dict["t"] = loss.item()
