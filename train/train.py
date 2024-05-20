@@ -3,6 +3,7 @@ import os
 # os.environ['PYOPENGL_PLATFORM'] = 'egl'
 # os.environ['MESA_GL_VERSION_OVERRIDE'] = '3.3'
 # os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
+import math
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -20,8 +21,10 @@ import torch.nn.functional as F
 from dotmap import DotMap
 from dataset.dataloader import Dataset
 import cv2
-import pyrender
 import trimesh
+import mesh_to_depth as m2d
+from PIL import Image
+import matplotlib as mpl
 
 
 import random
@@ -287,21 +290,34 @@ class RRFTrainer(trainlib.Trainer):
                 maskgt_file_name = f"monitor/mask@step{global_step}GT.png"
                 fixed_rgbs = mask_gt.squeeze(0).cpu().detach().numpy()
                 cv2.imwrite(maskgt_file_name, fixed_rgbs * 255)
-            if 0:
-                # https://pyrender.readthedocs.io/en/latest/examples/quickstart.html#minimal-example-for-offscreen-rendering
-                # If you’re using a headless server, make sure that you followed the guide for installing OSMesa. See Getting Pyrender Working with OSMesa.
-                scene = pyrender.Scene()
+            # if 0:
+                # https://github.com/daeyun/mesh-to-depth
                 fuze_trimesh = trimesh.load('data/learned_geo/grasp_catglass_transparent3500.obj')
                 # fuze_trimesh = trimesh.load('data/init/sphere.obj')
-                mesh = pyrender.Mesh.from_trimesh(fuze_trimesh)
-                scene.add(mesh)
-                pyrender_camera = pyrender.IntrinsicsCamera(focal[0], focal[1], 240, 135, zfar=800.0)
-                scene.add(pyrender_camera, pose=pose.cpu())
-                light = pyrender.SpotLight(color=np.ones(3), intensity=3.0,innerConeAngle=np.pi/16.0,outerConeAngle=np.pi/6.0)
-                scene.add(light, pose=pose.cpu())
-                r = pyrender.OffscreenRenderer(400, 400)
-                color, depth = r.render(scene)
-
+                pose_matrix=pose.cpu()
+                pos_scale = 1.0
+                cam_pos = [pos_scale*pose_matrix[0, 3], pos_scale*pose_matrix[1, 3], pos_scale*pose_matrix[2, 3]]
+                cam_lookat = [0,0,0] # center of the camera trace sphere
+                cam_up = [pose_matrix[0, 1], pose_matrix[1, 1], pose_matrix[2, 1]]
+                params = []
+                fov_x = math.radians(60) #src/dataset/dataloader.py line 38
+                params.append({
+                    'cam_pos': cam_pos, 'cam_lookat': cam_lookat, 'cam_up': cam_up,
+                    'x_fov': fov_x,  # End-to-end field of view in radians
+                    'near': 0.1, 'far': 50,
+                    'height': H, 'width': W,
+                    'is_depth': True,  # If false, output a ray displacement map, i.e. from the mesh surface to the camera center.
+                })
+                # depth_maps = m2d.mesh2depth(fuze_trimesh.vertices.astype(np.float32), fuze_trimesh.faces.astype(np.uint32), params, empty_pixel_value=np.nan)
+                depth_maps = m2d.mesh2depth(fuze_trimesh.vertices.astype(np.float32), fuze_trimesh.faces.astype(np.uint32), params, empty_pixel_value=np.nan)
+                depth_without_nan = np.where(np.isnan(depth_maps[0]), 5, depth_maps[0]) # give a random big value
+                depth_image = Image.fromarray((((depth_without_nan.max()-depth_without_nan) / (depth_without_nan.max() - depth_without_nan.min())) * 255).astype(np.uint8), mode='L')
+                # cmap = mpl.colormaps['jet']
+                # cmap = mpl.colormaps['Greys']
+                # depth_image = Image.fromarray((cmap((depth_without_nan - depth_without_nan.min()) / (depth_without_nan.max() - depth_without_nan.min())) * 255).astype(np.uint8), mode='RGB')
+                depth_file_name = f"monitor/mask@step{global_step}depth.png"
+                depth_image.save(f"{depth_file_name}".format(global_step=global_step))
+                # depthvalue = depth_without_nan.sum()
 
             if is_train:
                 loss.backward()

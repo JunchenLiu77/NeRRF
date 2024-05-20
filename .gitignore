@@ -13,3 +13,6 @@ nvdiffrast/
 python-mesh-raycast/
 tiny-cuda-nn/
 initial/
+pyopengl/
+mesa_18.3.3-0.deb
+mesh_to_depth/
