@@ -73,6 +73,13 @@ struct Tensor
         store(_nhwcIndex(z, y, x, 1), _val.y);
         store(_nhwcIndex(z, y, x, 2), _val.z);
     }
+    __device__ inline void store(unsigned int x, unsigned int y, unsigned int z, vec4f _val)
+    {
+        store(_nhwcIndex(z, y, x, 0), _val.x);
+        store(_nhwcIndex(z, y, x, 1), _val.y);
+        store(_nhwcIndex(z, y, x, 2), _val.z);
+        store(_nhwcIndex(z, y, x, 3), _val.w);
+    }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Store gradient , no broadcasting here. Assume we output full res gradient and then reduce using torch.sum outside

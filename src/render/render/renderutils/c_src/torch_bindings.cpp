@@ -178,7 +178,7 @@ torch::Tensor prepare_shading_normal_fwd(torch::Tensor pos, torch::Tensor view_p
 
     // Allocate output tensors.
     torch::TensorOptions opts = torch::TensorOptions().dtype(p.out.fp16 ? torch::kBFloat16 : torch::kFloat32).device(torch::kCUDA);
-    torch::Tensor out = torch::empty({ p.gridSize.z, p.gridSize.y, p.gridSize.x, 3 }, opts);
+    torch::Tensor out = torch::empty({ p.gridSize.z, p.gridSize.y, p.gridSize.x, 4 }, opts);
 
     // Choose launch parameters.
     dim3 blockSize = getLaunchBlockSize(BLOCK_X, BLOCK_Y, p.gridSize);

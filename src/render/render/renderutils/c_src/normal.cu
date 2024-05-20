@@ -121,8 +121,15 @@ __global__ void PrepareShadingNormalFwdKernel(PrepareShadingNormalKernelParams p
         res = fwdBendNormal(view_vec, -shading_nrm, -geom_nrm);
     else
         res = fwdBendNormal(view_vec, shading_nrm, geom_nrm);
+    vec3f depthvec = view_pos - pos;
+    vec4f res_depth;
+    res_depth = vec4f(0);
+    res_depth.x = res.x;
+    res_depth.y = res.y;
+    res_depth.z = res.z;
+    res_depth.w = sqrt(depthvec.x*depthvec.x+depthvec.y*depthvec.y+depthvec.z*depthvec.z);
 
-    p.out.store(px, py, pz, res);
+    p.out.store(px, py, pz, res_depth);
 }
 
 __global__ void PrepareShadingNormalBwdKernel(PrepareShadingNormalKernelParams p) 

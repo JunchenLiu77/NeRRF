@@ -247,7 +247,11 @@ class _prepare_shading_normal_func(torch.autograd.Function):
         ctx.save_for_backward(
             pos, view_pos, perturbed_nrm, smooth_nrm, smooth_tng, geom_nrm
         )
-        return out
+        norm = out[..., 0:3]
+        # depth = out[..., 3]
+        # debug_depth = depth[abs(depth-4)>0.0001]
+
+        return norm
 
     @staticmethod
     def backward(ctx, dout):
