@@ -7,12 +7,12 @@ logs/
 monitor*/
 __pycache__
 scripts/colmap2nerf.py
-dynamicgs/
-nerrf_torchviz/
-nvdiffrast/
-python-mesh-raycast/
-tiny-cuda-nn/
-initial/
-pyopengl/
+# dynamicgs/
+# nerrf_torchviz/
+# nvdiffrast/
+# python-mesh-raycast/
+# tiny-cuda-nn/
+# initial/
+# pyopengl/
 mesa_18.3.3-0.deb
 mesh_to_depth/
